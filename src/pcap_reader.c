@@ -97,7 +97,7 @@ static void PcapReaderBind(duckdb_bind_info info) {
     state->file = NULL;
     state->needs_swap = 0;
     state->is_nanosecond = 0;
-    state->is_stdin = (strncmp(filename, "/dev/stdin", 11) == 0 || strncmp(filename, "-", 2) == 0);
+    state->is_stdin = (strcmp(filename, "/dev/stdin") == 0 || strcmp(filename, "-") == 0);
     state->packet_buffer = NULL;
     state->buffer_size = 0;
     
