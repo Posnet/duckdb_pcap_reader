@@ -17,11 +17,6 @@ typedef struct {
     size_t buffer_size;      // Current buffer size
 } pcap_reader_state_t;
 
-// Swap byte order for 16-bit values
-static uint16_t swap16(uint16_t value) {
-    return ((value & 0xFF00) >> 8) | ((value & 0x00FF) << 8);
-}
-
 // Swap byte order for 32-bit values
 static uint32_t swap32(uint32_t value) {
     return ((value & 0xFF000000) >> 24) |

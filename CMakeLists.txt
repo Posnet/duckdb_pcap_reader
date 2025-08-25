@@ -32,6 +32,34 @@ project(${EXTENSION_NAME} LANGUAGES C)
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Enable comprehensive compiler warnings
+if(MSVC)
+    add_compile_options(/W4 /WX)
+else()
+    add_compile_options(
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wcast-align
+        -Wconversion
+        -Wformat=2
+        -Wmissing-declarations
+        -Wmissing-prototypes
+        -Wnull-dereference
+        -Wshadow
+        -Wsign-conversion
+        -Wundef
+        -Wunreachable-code
+        -Wunused
+        -Wwrite-strings
+        -Werror
+        # Disable specific warnings that come from DuckDB headers or macros
+        -Wno-strict-prototypes
+        -Wno-cast-qual
+        -Wno-missing-prototypes  # DUCKDB_EXTENSION_ENTRYPOINT generates function without prototype
+    )
+endif()
+
 # Create Extension library
 set(EXTENSION_SOURCES
         src/duckdb_pcap.c
@@ -48,11 +76,10 @@ endif()
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(VISIBILITY_INLINES_HIDDEN ON)
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -s")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -s")
+# Note: -s flag removed as it causes issues with some compilers and is deprecated on macOS
 
 # Include own headers
 target_include_directories(${EXTENSION_NAME} PRIVATE src/include)
 
-# Include DuckDB C API headers
-target_include_directories(${EXTENSION_NAME} PRIVATE duckdb_capi)
+# Include DuckDB C API headers as system headers to suppress warnings
+target_include_directories(${EXTENSION_NAME} SYSTEM PRIVATE duckdb_capi)
