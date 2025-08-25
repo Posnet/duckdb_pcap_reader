@@ -28,8 +28,8 @@ endif()
 ###
 project(${EXTENSION_NAME} LANGUAGES C)
 
-# Set C23 standard
-set(CMAKE_C_STANDARD 23)
+# Set C17 standard
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Create Extension library
