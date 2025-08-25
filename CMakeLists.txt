@@ -56,7 +56,6 @@ else()
         # Disable specific warnings that come from DuckDB headers or macros
         -Wno-strict-prototypes
         -Wno-cast-qual
-        -Wno-missing-prototypes  # DUCKDB_EXTENSION_ENTRYPOINT generates function without prototype
     )
 endif()
 
