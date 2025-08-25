@@ -1,0 +1,25 @@
+# name: test/sql/stdin_test.test
+# description: test pcap reader with stdin input
+# group: [pcap_reader]
+
+# Note: This test requires manual testing with actual stdin input
+# It cannot be run automatically in the test suite
+
+# Require statement will ensure the extension is loaded
+require duckdb_pcap
+
+# This would be the test if we could pipe stdin:
+# cat test.pcap | duckdb -c "SELECT COUNT(*) FROM read_pcap('/dev/stdin')"
+# cat test.pcap | duckdb -c "SELECT COUNT(*) FROM read_pcap('-')"
+
+# For now, we can at least verify the function accepts these paths without crashing
+# Even though there's no actual data on stdin in the test environment
+statement error
+SELECT * FROM read_pcap('/dev/stdin');
+----
+Failed to read pcap file header
+
+statement error
+SELECT * FROM read_pcap('-');
+----
+Failed to read pcap file header

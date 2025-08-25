@@ -4,6 +4,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 DUCKDB_EXTENSION_EXTERN
 
 // State for the pcap reader
@@ -13,6 +18,7 @@ typedef struct {
     int needs_swap;  // Whether we need to swap byte order
     int is_nanosecond;  // Whether timestamps are in nanoseconds
     char *filename;
+    int is_stdin;  // Whether we're reading from stdin
     uint8_t *packet_buffer;  // Reusable buffer for packet data
     size_t buffer_size;      // Current buffer size
 } pcap_reader_state_t;
@@ -40,7 +46,7 @@ static void PcapReaderBindDataFree(void *data) {
 static void PcapReaderInitDataFree(void *data) {
     pcap_reader_state_t *state = (pcap_reader_state_t *)data;
     if (state) {
-        if (state->file) {
+        if (state->file && !state->is_stdin) {
             fclose(state->file);
         }
         if (state->packet_buffer) {
@@ -85,6 +91,7 @@ static void PcapReaderBind(duckdb_bind_info info) {
     state->file = NULL;
     state->needs_swap = 0;
     state->is_nanosecond = 0;
+    state->is_stdin = (strncmp(filename, "/dev/stdin", 11) == 0 || strncmp(filename, "-", 2) == 0);
     state->packet_buffer = NULL;
     state->buffer_size = 0;
     
@@ -126,20 +133,31 @@ static void PcapReaderInit(duckdb_init_info info) {
     state->filename = bind_state->filename;  // Just reference, don't copy
     state->needs_swap = 0;
     state->is_nanosecond = 0;
+    state->is_stdin = bind_state->is_stdin;
     state->packet_buffer = NULL;
     state->buffer_size = 0;
     
-    // Open the pcap file
-    state->file = fopen(state->filename, "rb");
-    if (!state->file) {
-        duckdb_free(state);
-        duckdb_init_set_error(info, "Failed to open pcap file");
-        return;
+    // Open the pcap file or use stdin
+    if (state->is_stdin) {
+        state->file = stdin;
+#ifdef _WIN32
+        // Set stdin to binary mode on Windows
+        _setmode(_fileno(stdin), _O_BINARY);
+#endif
+    } else {
+        state->file = fopen(state->filename, "rb");
+        if (!state->file) {
+            duckdb_free(state);
+            duckdb_init_set_error(info, "Failed to open pcap file");
+            return;
+        }
     }
     
     // Read the file header
     if (fread(&state->file_header, sizeof(pcap_file_header_t), 1, state->file) != 1) {
-        fclose(state->file);
+        if (!state->is_stdin) {
+            fclose(state->file);
+        }
         duckdb_free(state);
         duckdb_init_set_error(info, "Failed to read pcap file header");
         return;
@@ -163,7 +181,9 @@ static void PcapReaderInit(duckdb_init_info info) {
         // Swap the header fields we'll use
         state->file_header.snaplen = swap32(state->file_header.snaplen);
     } else {
-        fclose(state->file);
+        if (!state->is_stdin) {
+            fclose(state->file);
+        }
         duckdb_free(state);
         duckdb_init_set_error(info, "Invalid pcap file magic number");
         return;
@@ -173,7 +193,9 @@ static void PcapReaderInit(duckdb_init_info info) {
     state->buffer_size = state->file_header.snaplen;
     state->packet_buffer = (uint8_t *)duckdb_malloc(state->buffer_size);
     if (!state->packet_buffer) {
-        fclose(state->file);
+        if (!state->is_stdin) {
+            fclose(state->file);
+        }
         duckdb_free(state);
         duckdb_init_set_error(info, "Failed to allocate packet buffer");
         return;
