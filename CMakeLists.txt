@@ -28,10 +28,14 @@ endif()
 ###
 project(${EXTENSION_NAME} LANGUAGES C)
 
+# Set C23 standard
+set(CMAKE_C_STANDARD 23)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
 # Create Extension library
 set(EXTENSION_SOURCES
-        src/add_numbers.c
-        src/capi_quack.c
+        src/duckdb_pcap.c
+        src/pcap_reader.c
 )
 
 if (DUCKDB_WASM_EXTENSION)

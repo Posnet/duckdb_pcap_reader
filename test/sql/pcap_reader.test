@@ -1,0 +1,45 @@
+# name: test/sql/pcap_reader.test
+# description: test pcap reader extension
+# group: [pcap_reader]
+
+# Before we load the extension, this will fail
+statement error
+SELECT * FROM read_pcap('test/data/test.pcap');
+----
+Catalog Error: Table Function with name read_pcap does not exist!
+
+# Require statement will ensure the extension is loaded
+require duckdb_pcap
+
+# Test reading the pcap file
+query IIII
+SELECT COUNT(*), MIN(capture_len), MAX(capture_len), SUM(original_len) FROM read_pcap('test/data/test.pcap');
+----
+4	12	39	106
+
+# Test reading specific columns
+query II
+SELECT capture_len, original_len FROM read_pcap('test/data/test.pcap') ORDER BY capture_len;
+----
+12	12
+24	24
+31	31
+39	39
+
+# Test that timestamps are increasing
+query I
+SELECT COUNT(*) FROM (
+    SELECT timestamp_ns, 
+           LAG(timestamp_ns) OVER (ORDER BY timestamp_ns) as prev_ts
+    FROM read_pcap('test/data/test.pcap')
+) t 
+WHERE timestamp_ns > prev_ts OR prev_ts IS NULL;
+----
+4
+
+# Test data content length matches capture_len
+query I
+SELECT COUNT(*) FROM read_pcap('test/data/test.pcap')
+WHERE OCTET_LENGTH(data) = capture_len;
+----
+4

@@ -1,0 +1,41 @@
+# name: test/sql/pcap_nanosecond.test
+# description: test pcap reader with nanosecond-precision files
+# group: [pcap_reader]
+
+# Require statement will ensure the extension is loaded
+require duckdb_pcap
+
+# Test reading nanosecond-precision pcap file
+query IIII
+SELECT COUNT(*), MIN(capture_len), MAX(capture_len), COUNT(DISTINCT original_len) FROM read_pcap('test/data/test_nano.pcap');
+----
+4	5	39	4
+
+# Test that nanosecond precision is preserved
+query I
+SELECT COUNT(*) FROM read_pcap('test/data/test_nano.pcap')
+WHERE timestamp_ns % 1000000000 != 0;
+----
+4
+
+# Verify specific nanosecond values
+query I
+SELECT timestamp_ns % 1000000000 FROM read_pcap('test/data/test_nano.pcap') ORDER BY timestamp_ns LIMIT 1;
+----
+123456789
+
+# Test data content
+query II
+SELECT capture_len, OCTET_LENGTH(data) FROM read_pcap('test/data/test_nano.pcap') ORDER BY capture_len;
+----
+5	5
+19	19
+34	34
+39	39
+
+# Verify all data lengths match capture lengths
+query I
+SELECT COUNT(*) FROM read_pcap('test/data/test_nano.pcap')
+WHERE OCTET_LENGTH(data) = capture_len;
+----
+4
