@@ -7,6 +7,7 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#include <errno.h>
 #endif
 
 DUCKDB_EXTENSION_EXTERN
@@ -79,7 +80,8 @@ static void PcapReaderBind(duckdb_bind_info info) {
     }
     
     // Store filename - we need to copy it as the value will be destroyed
-    state->filename = (char *)duckdb_malloc(strlen(filename) + 1);
+    size_t filename_len = strlen(filename) + 1;
+    state->filename = (char *)duckdb_malloc(filename_len);
     if (!state->filename) {
         duckdb_bind_set_error(info, "Failed to allocate memory for filename");
         duckdb_free(state);
@@ -87,7 +89,11 @@ static void PcapReaderBind(duckdb_bind_info info) {
         duckdb_destroy_value(&filename_value);
         return;
     }
-    strcpy(state->filename, filename);
+#ifdef _WIN32
+    strcpy_s(state->filename, filename_len, filename);
+#else
+    memcpy(state->filename, filename, filename_len);
+#endif
     state->file = NULL;
     state->needs_swap = 0;
     state->is_nanosecond = 0;
@@ -145,12 +151,21 @@ static void PcapReaderInit(duckdb_init_info info) {
         _setmode(_fileno(stdin), _O_BINARY);
 #endif
     } else {
+#ifdef _WIN32
+        errno_t err = fopen_s(&state->file, state->filename, "rb");
+        if (err != 0 || !state->file) {
+            duckdb_free(state);
+            duckdb_init_set_error(info, "Failed to open pcap file");
+            return;
+        }
+#else
         state->file = fopen(state->filename, "rb");
         if (!state->file) {
             duckdb_free(state);
             duckdb_init_set_error(info, "Failed to open pcap file");
             return;
         }
+#endif
     }
     
     // Read the file header
