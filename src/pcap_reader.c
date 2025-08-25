@@ -13,6 +13,8 @@ typedef struct {
     int needs_swap;  // Whether we need to swap byte order
     int is_nanosecond;  // Whether timestamps are in nanoseconds
     char *filename;
+    uint8_t *packet_buffer;  // Reusable buffer for packet data
+    size_t buffer_size;      // Current buffer size
 } pcap_reader_state_t;
 
 // Swap byte order for 16-bit values
@@ -45,6 +47,9 @@ static void PcapReaderInitDataFree(void *data) {
     if (state) {
         if (state->file) {
             fclose(state->file);
+        }
+        if (state->packet_buffer) {
+            duckdb_free(state->packet_buffer);
         }
         // Don't free filename here as it's owned by bind data
         free(state);
@@ -85,6 +90,8 @@ static void PcapReaderBind(duckdb_bind_info info) {
     state->file = NULL;
     state->needs_swap = 0;
     state->is_nanosecond = 0;
+    state->packet_buffer = NULL;
+    state->buffer_size = 0;
     
     // Free the filename from duckdb_get_varchar
     duckdb_free((void *)filename);
@@ -124,6 +131,8 @@ static void PcapReaderInit(duckdb_init_info info) {
     state->filename = bind_state->filename;  // Just reference, don't copy
     state->needs_swap = 0;
     state->is_nanosecond = 0;
+    state->packet_buffer = NULL;
+    state->buffer_size = 0;
     
     // Open the pcap file
     state->file = fopen(state->filename, "rb");
@@ -162,6 +171,16 @@ static void PcapReaderInit(duckdb_init_info info) {
         fclose(state->file);
         duckdb_free(state);
         duckdb_init_set_error(info, "Invalid pcap file magic number");
+        return;
+    }
+    
+    // Pre-allocate packet buffer based on snaplen
+    state->buffer_size = state->file_header.snaplen;
+    state->packet_buffer = (uint8_t *)duckdb_malloc(state->buffer_size);
+    if (!state->packet_buffer) {
+        fclose(state->file);
+        duckdb_free(state);
+        duckdb_init_set_error(info, "Failed to allocate packet buffer");
         return;
     }
     
@@ -218,15 +237,19 @@ static void PcapReaderFunction(duckdb_function_info info, duckdb_data_chunk outp
                           ((uint64_t)packet_header.ts_usec * 1000ULL);
         }
         
-        // Allocate memory for packet data using DuckDB's allocator
-        uint8_t *packet_data = (uint8_t *)duckdb_malloc(packet_header.caplen);
-        if (!packet_data) {
-            break;
+        // Reallocate buffer if packet is larger than current buffer
+        if (packet_header.caplen > state->buffer_size) {
+            uint8_t *new_buffer = (uint8_t *)duckdb_malloc(packet_header.caplen);
+            if (!new_buffer) {
+                break;
+            }
+            duckdb_free(state->packet_buffer);
+            state->packet_buffer = new_buffer;
+            state->buffer_size = packet_header.caplen;
         }
         
-        // Read packet data
-        if (fread(packet_data, 1, packet_header.caplen, state->file) != packet_header.caplen) {
-            duckdb_free(packet_data);
+        // Read packet data into reusable buffer
+        if (fread(state->packet_buffer, 1, packet_header.caplen, state->file) != packet_header.caplen) {
             break;
         }
         
@@ -235,10 +258,9 @@ static void PcapReaderFunction(duckdb_function_info info, duckdb_data_chunk outp
         original_len_data[row_count] = packet_header.len;
         capture_len_data[row_count] = packet_header.caplen;
         
-        // Set blob data
-        duckdb_vector_assign_string_element_len(data_vec, row_count, (const char *)packet_data, packet_header.caplen);
+        // Set blob data - DuckDB copies the data internally
+        duckdb_vector_assign_string_element_len(data_vec, row_count, (const char *)state->packet_buffer, packet_header.caplen);
         
-        duckdb_free(packet_data);
         row_count++;
     }
     

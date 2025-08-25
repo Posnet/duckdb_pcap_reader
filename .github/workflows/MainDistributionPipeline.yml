@@ -18,5 +18,5 @@ jobs:
     with:
       duckdb_version: v1.3.2
       ci_tools_version: v1.3.2
-      extension_name: capi_quack
+      extension_name: duckdb_pcap
       extra_toolchains: python3
